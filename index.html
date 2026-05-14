@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>綠島鄉 SDG 6 清潔飲水與衛生儀表板</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://js.arcgis.com/4.28/esri/themes/light/main.css">
+    <script src="https://js.arcgis.com/4.28/"></script>
+    <style>
+        :root { 
+            --sdg6-primary: #26bde2; 
+            --sdg6-dark: #1f7a8c;
+            --bg-color: #ffffff; 
+            --card-title-size: 0.85rem; 
+            --up-color: #28a745;
+            --down-color: #dc3545;
+        }
+        
+        html, body { 
+            margin: 0; padding: 0; 
+            background-color: #f4f7f9; 
+            font-family: "Microsoft JhengHei", sans-serif; 
+            width: 100vw; height: 100vh; 
+            display: flex; overflow: hidden; 
+        }
+
+        /* 左側控制面板 */
+        .left-control-panel { 
+            width: 650px; display: flex; flex-direction: column;
+            border-right: 1px solid #ccc; flex-shrink: 0; height: 100vh; background: #e0e0e0;
+        }
+
+        .control-top { flex: 0 0 60%; display: flex; flex-direction: column; background: #fff; border-bottom: 2px solid #ccc;}
+        .year-section { display: flex; width: 100%; flex: 1; border-bottom: 1px solid #eee; }
+        
+        .year-sidebar { width: 220px; border-right: 1px solid #eee; display: flex; flex-direction: column; background: #fff; flex-shrink: 0; }
+        .sidebar-logo-container { width: 100%; display: flex; flex-direction: column; padding: 0; }
+        .sidebar-logo-img { width: 100%; height: auto; cursor: pointer; display: block; transition: opacity 0.3s; }
+        .sidebar-logo-img:hover { opacity: 0.8; }
+        .sidebar-text { 
+            padding: 15px; color: #333; font-size: 1.1rem; text-align: center; font-weight: bold; 
+            border-bottom: 2px solid var(--sdg6-primary); margin: 0 15px 20px 15px;
+        }
+
+        #year-btn-container { padding: 0 15px 15px 15px; display: flex; flex-direction: column; overflow-y: auto; }
+        .year-btn { 
+            width: 100%; padding: 12px; cursor: pointer; transition: 0.2s; 
+            text-align: center; font-size: 1rem; margin-bottom: 8px; 
+            border-radius: 6px; background: #f8f9fa; color: #555; border: 1px solid #eee;
+            font-family: "Microsoft JhengHei", sans-serif; box-sizing: border-box;
+        }
+        .year-btn:hover { background: #e9ecef; }
+        .year-btn.active { background: var(--sdg6-primary); color: white; font-weight: bold; border-color: var(--sdg6-primary); }
+
+        .year-controlled-indicators { flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 4px; padding: 4px; background: #e0e0e0; }
+        
+        .api-panel-left { flex: 1; display: flex; flex-direction: column; background: #fff; overflow: hidden; }
+        .api-header { background: #005a87; color: white; padding: 8px 12px; font-weight: bold; font-size: 0.85rem; }
+        .api-container { flex: 1; overflow-y: auto; padding: 8px; background: #f0f4f7; }
+        .api-station-card { background: #fff; border-radius: 6px; padding: 10px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.75rem; }
+        .api-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+        .api-item { border-bottom: 1px solid #eee; padding: 2px 0; }
+        .api-label { font-weight: bold; color: #555; }
+
+        .center-charts-panel { 
+            width: 650px; display: flex; flex-direction: column; 
+            background: #fff; border-right: 1px solid #ccc; flex-shrink: 0; 
+            overflow: hidden; padding: 10px; box-sizing: border-box;
+        }
+        .chart-box { height: 38vh; display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; }
+        .chart-title { margin: 0 0 10px 0; font-size: 1rem; color: #333; text-align: center; font-weight: bold; }
+
+        /* 右側地圖區：將圖例設回原生浮動方式 */
+        .main-map-panel { flex: 1; height: 100vh; display: flex; flex-direction: column; }
+        #viewDiv { flex: 1; width: 100%; }
+
+        .stat-card { background: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; border-left: 5px solid var(--sdg6-primary); padding: 10px; transition: background 0.2s;}
+        .stat-card:hover { background: #fcfcfc; }
+        .stat-card h3 { margin: 0; font-size: 0.85rem; color: #666; text-align: center; }
+        
+        .value-container { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 4px 0; }
+        .stat-value { font-size: 1.8rem; font-weight: bold; color: #222; }
+        .trend-arrow { width: 16px; height: 16px; display: none; }
+        .stat-unit { font-size: 0.8rem; color: #999; }
+
+        .modal { display: none; position: fixed; z-index: 5000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
+        .modal-content { background: white; margin: 5vh auto; padding: 25px; border-radius: 12px; width: 700px; max-width: 90%; position: relative; }
+        .close { position: absolute; right: 20px; top: 10px; font-size: 30px; cursor: pointer; color: #999; }
+        .info-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9rem; }
+        .info-table th, .info-table td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div class="left-control-panel">
+    <div class="control-top">
+        <div class="year-section">
+            <div class="year-sidebar">
+                <div class="sidebar-logo-container">
+                    <a href="https://globalgoals.tw/6-clean-water-and-sanitation" target="_blank">
+                        <img src="SDG6logo.png" alt="SDG6" class="sidebar-logo-img">
+                    </a>
+                </div>
+                <div class="sidebar-text">請選擇年份
+                </div>
+                <div id="year-btn-container"></div>
+            </div>
+            <div class="year-controlled-indicators" id="year-indicator-grid"></div>
+        </div>
+    </div>
+    <div class="api-panel-left">
+        <div class="api-header">即時海象監測 (CWA API)</div>
+        <div class="api-container" id="api-display">
+            <div style="padding: 15px; font-size: 0.8rem;">載入中...</div>
+        </div>
+    </div>
+</div>
+
+<div class="center-charts-panel">
+    <div style="height: 14vh; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #eee; background: #fff;">
+        <div class="stat-card" style="width: 320px; border: 1px solid #eee; border-left: 5px solid var(--sdg6-primary); box-shadow: 0 4px 6px rgba(0,0,0,0.05);" onclick="openWaterRateDetail()">
+            <h3>112年實際供水率 (點擊詳情)</h3>
+            <div class="stat-value" style="color: var(--sdg6-dark);">65.04%</div>
+            <div class="stat-unit">百分比</div>
+        </div>
+    </div>
+    <div class="chart-box">
+        <div class="chart-title">112年逐月供水量 (CMD)</div>
+        <div style="flex:1;"><canvas id="monthlySupplyChart"></canvas></div>
+    </div>
+    <div class="chart-box" style="border-top: 1px solid #eee;">
+        <div class="chart-title">綠島鄉每戶平均供水量趨勢 (100-104)</div>
+        <div style="flex:1;"><canvas id="householdSupplyChart"></canvas></div>
+    </div>
+</div>
+
+<div class="main-map-panel">
+    <div id="viewDiv"></div>
+</div>
+
+<div id="chartModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <h2 id="modalTitle" style="font-size: 1.2rem;">詳情</h2>
+        <div id="modalBody"></div>
+    </div>
+</div>
+
+<script>
+    const years = ['109', '110', '111', '112', '113'];
+    let currentYearIdx = 4;
+
+    const indicators = [
+        { id: 'water_rate', name: '自來水普及率', unit: '%', data: [69.6, 68.67, 68.12, 65.04, 60.09] },
+        { id: 'sewage_rate', name: '污水處理率', unit: '%', data: [0, 0, 0, 0, 7.47] },
+        { id: 'daily_water', name: '人均用水量', unit: 'L/日', data: [349, 334, 358, 344, 465] },
+        { id: 'leak_rate', name: '自來水漏水率', unit: '%', data: [0, 0, 0, 0, 36.81] }
+    ];
+
+    const householdYears = ['100', '101', '102', '103', '104'];
+    const avgSupplyData = [1273.59, 1157.64, 1170.65, 1171.11, 1151.56];
+    const totalSupplies = [72712, 66740, 67858, 68012, 67630];
+    const householdCounts = [57092, 57652, 57966, 58075, 58729];
+    const monthlyData = [31687, 24053, 28827, 33314, 32498, 37532, 46113, 39609, 36244, 34216, 25911, 25244];
+
+    let modalChartInstance = null;
+
+    function init() {
+        const btnContainer = document.getElementById('year-btn-container');
+        years.forEach((y, i) => {
+            const btn = document.createElement('button');
+            btn.className = `year-btn ${i === currentYearIdx ? 'active' : ''}`;
+            btn.innerText = y + " 年";
+            btn.onclick = () => switchYear(i);
+            btnContainer.appendChild(btn);
+        });
+        renderYearCards();
+        updateDisplay();
+        initMap();
+        fetchMarineData();
+        renderHouseholdChart();
+        renderMonthlyChart();
+    }
+
+    function renderYearCards() {
+        const grid = document.getElementById('year-indicator-grid');
+        indicators.forEach(ind => {
+            const card = document.createElement('div');
+            card.className = 'stat-card';
+            card.onclick = () => openModal(ind);
+            card.innerHTML = `
+                <h3>${ind.name}</h3>
+                <div class="value-container">
+                    <div class="stat-value" id="val-${ind.id}">--</div>
+                    <svg class="trend-arrow" id="arrow-${ind.id}" viewBox="0 0 100 50">
+                        <polygon id="poly-${ind.id}" points="50,5 95,45 5,45" />
+                    </svg>
+                </div>
+                <div class="stat-unit">${ind.unit}</div>
+            `;
+            grid.appendChild(card);
+        });
+    }
+
+    function switchYear(idx) {
+        currentYearIdx = idx;
+        document.querySelectorAll('.year-btn').forEach((btn, i) => btn.classList.toggle('active', i === idx));
+        updateDisplay();
+    }
+
+    function updateDisplay() {
+        indicators.forEach(ind => {
+            const valEl = document.getElementById(`val-${ind.id}`);
+            const arrowEl = document.getElementById(`arrow-${ind.id}`);
+            const polyEl = document.getElementById(`poly-${ind.id}`);
+            const currentVal = ind.data[currentYearIdx];
+            
+            valEl.innerText = currentVal === 0 ? "無資料" : currentVal;
+
+            if (currentYearIdx > 0 && ind.data[currentYearIdx-1] !== 0 && currentVal !== 0) {
+                const prevVal = ind.data[currentYearIdx - 1];
+                if (currentVal > prevVal) {
+                    valEl.style.color = "var(--up-color)";
+                    arrowEl.style.display = "block";
+                    arrowEl.style.fill = "var(--up-color)";
+                    polyEl.setAttribute("points", "50,5 95,45 5,45");
+                } else if (currentVal < prevVal) {
+                    valEl.style.color = "var(--down-color)";
+                    arrowEl.style.display = "block";
+                    arrowEl.style.fill = "var(--down-color)";
+                    polyEl.setAttribute("points", "5,5 95,5 50,45");
+                } else {
+                    valEl.style.color = "#222"; arrowEl.style.display = "none";
+                }
+            } else {
+                valEl.style.color = "#222"; arrowEl.style.display = "none";
+            }
+        });
+    }
+
+    function renderHouseholdChart() {
+        new Chart(document.getElementById('householdSupplyChart'), {
+            type: 'line',
+            data: {
+                labels: householdYears,
+                datasets: [{ label: '平均供水(L)', data: avgSupplyData, borderColor: 'var(--sdg6-primary)', fill: true, backgroundColor: 'rgba(38,189,226,0.1)', tension: 0.3 }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: { callbacks: { afterLabel: (ctx) => [`總量: ${totalSupplies[ctx.dataIndex]} CMD`, `戶數: ${householdCounts[ctx.dataIndex]} 戶`] } } } }
+        });
+    }
+
+    function renderMonthlyChart() {
+        new Chart(document.getElementById('monthlySupplyChart'), {
+            type: 'bar',
+            data: {
+                labels: ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
+                datasets: [{ label: 'CMD', data: monthlyData, backgroundColor: 'rgba(31, 122, 140, 0.8)' }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+
+    function openWaterRateDetail() {
+        document.getElementById('chartModal').style.display = 'block';
+        document.getElementById('modalBody').innerHTML = `
+            <table class="info-table">
+                <tr><th>項目</th><th>戶數</th><th>人數</th></tr>
+                <tr><td>行政區域</td><td>1258</td><td>4373</td></tr>
+                <tr><td>供水區域</td><td>1004</td><td>3490</td></tr>
+                <tr><td>供水戶口</td><td>814</td><td>2844</td></tr>
+                <tr style="background:#f2f2f2; font-weight:bold;"><td colspan="3">實際普及率：65.04%</td></tr>
+            </table>`;
+    }
+
+    async function fetchMarineData() {
+        const apiKey = 'your_api_key_here'; 
+        const apiUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-B0075-001?Authorization=${apiKey}`;
+        try {
+            const response = await fetch(apiUrl);
+            const data = await response.json();
+            const stations = data.records.seaSurfaceObs.location.filter(loc => ['龜灣', '公館'].includes(loc.locationName));
+            const display = document.getElementById('api-display');
+            display.innerHTML = '';
+            stations.forEach(st => {
+                const obs = st.stationObsElement;
+                const card = document.createElement('div');
+                card.className = 'api-station-card';
+                card.innerHTML = `
+                    <div style="font-weight:bold; color:var(--sdg6-dark); border-bottom:1px solid #eee; margin-bottom:5px;">${st.locationName}測站</div>
+                    <div class="api-grid">
+                        <div class="api-item"><span class="api-label">測站代碼：</span>${st.stationId || '--'}</div>
+                        <div class="api-item"><span class="api-label">資料觀測時間：</span>${st.time.obsTime || '--'}</div>
+                        <div class="api-item"><span class="api-label">潮高：</span>${obs.tideHeight || '--'}</div>
+                        <div class="api-item"><span class="api-label">潮高等級：</span>${obs.tideLevel || '--'}</div>
+                        <div class="api-item"><span class="api-label">浪高：</span>${obs.waveHeight || '--'}</div>
+                        <div class="api-item"><span class="api-label">浪向：</span>${obs.waveDirection || '--'}</div>
+                        <div class="api-item"><span class="api-label">浪向方位：</span>${obs.waveDirection16 || '--'}</div>
+                        <div class="api-item"><span class="api-label">波浪週期：</span>${obs.wavePeriod || '--'}</div>
+                        <div class="api-item"><span class="api-label">海溫：</span>${obs.seaTemperature || '--'}</div>
+                        <div class="api-item"><span class="api-label">氣溫：</span>${obs.airTemperature || '--'}</div>
+                        <div class="api-item"><span class="api-label">氣壓：</span>${obs.airPressure || '--'}</div>
+                        <div class="api-item"><span class="api-label">風速：</span>${obs.windSpeed || '--'}</div>
+                        <div class="api-item"><span class="api-label">風級：</span>${obs.windScale || '--'}</div>
+                        <div class="api-item"><span class="api-label">風向：</span>${obs.windDirection || '--'}</div>
+                        <div class="api-item"><span class="api-label">風向方位：</span>${obs.windDirection16 || '--'}</div>
+                        <div class="api-item"><span class="api-label">陣風：</span>${obs.gustSpeed || '--'}</div>
+                        <div class="api-item"><span class="api-label">陣風風級：</span>${obs.gustScale || '--'}</div>
+                        <div class="api-item"><span class="api-label">海流層：</span>${obs.currentLayer || '--'}</div>
+                        <div class="api-item"><span class="api-label">海表面層：</span>${obs.currentSurface || '--'}</div>
+                        <div class="api-item"><span class="api-label">海流流向：</span>${obs.currentDir || '--'}</div>
+                        <div class="api-item"><span class="api-label">流向方位：</span>${obs.currentDir16 || '--'}</div>
+                        <div class="api-item"><span class="api-label">海流流速：</span>${obs.currentSpeed || '--'}</div>
+                        <div class="api-item"><span class="api-label">海流流節：</span>${obs.currentKnot || '--'}</div>
+                    </div>`;
+                display.appendChild(card);
+            });
+        } catch (e) { document.getElementById('api-display').innerHTML = '載入失敗'; }
+    }
+
+    function initMap() {
+        require([
+            "esri/config", "esri/WebMap", "esri/views/MapView", "esri/widgets/Legend"
+        ], function(esriConfig, WebMap, MapView, Legend) {
+            esriConfig.portalUrl = "https://igisportal.geomatics.ncku.edu.tw/portal";
+            const map = new WebMap({ portalItem: { id: "fe655304fc3343e38cf9b186ea44269c" } });
+            const view = new MapView({ container: "viewDiv", map: map, center: [121.49, 22.66], zoom: 13 });
+            
+            // 預設圖例：顯示在地圖左下角
+            const legend = new Legend({ view: view });
+            view.ui.add(legend, "bottom-left");
+        });
+    }
+
+    function openModal(ind) {
+        document.getElementById('chartModal').style.display = 'block';
+        document.getElementById('modalTitle').innerText = ind.name;
+        document.getElementById('modalBody').innerHTML = '<div style="height:350px;"><canvas id="modalCanvas"></canvas></div>';
+        const ctx = document.getElementById('modalCanvas').getContext('2d');
+        if (modalChartInstance) modalChartInstance.destroy();
+        modalChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: { labels: years, datasets: [{ label: ind.unit, data: ind.data, borderColor: 'var(--sdg6-primary)', fill: false }] }
+        });
+    }
+
+    function closeModal() { document.getElementById('chartModal').style.display = 'none'; }
+    init();
+</script>
+</body>
+</html>
